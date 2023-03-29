@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
-	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+
 	"log"
 	"start-feishubot/handlers"
 	"start-feishubot/initialization"
 	"start-feishubot/services/openai"
+
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
 	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 
@@ -52,6 +57,24 @@ func main() {
 	r.POST("/webhook/card",
 		sdkginext.NewCardActionHandlerFunc(
 			cardHandler))
+
+	r.Any("/proxy/*proxyPath", func(c *gin.Context) {
+		remote, err := url.Parse("https://api.openai.com/")
+		if err != nil {
+			panic(err)
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(remote)
+		proxy.Director = func(req *http.Request) {
+			req.Header = c.Request.Header
+			req.Host = remote.Host
+			req.URL.Scheme = remote.Scheme
+			req.URL.Host = remote.Host
+			req.URL.Path = c.Param("proxyPath")
+		}
+
+		proxy.ServeHTTP(c.Writer, c.Request)
+	})
 
 	err := initialization.StartServer(*config, r)
 	if err != nil {
